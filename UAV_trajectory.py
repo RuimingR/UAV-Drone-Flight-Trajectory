@@ -208,33 +208,34 @@ def export_cesium_html(df, out_html="uav_3d_globe.html", ion_token="", sample_st
     // Avoid SkyBox.createDefaultCubeMap() which is not available in some Cesium builds
     viewer.scene.skyBox = undefined;
 
-    // Prefer Cesium World Imagery (satellite) when token is present; fallback to OSM
+    // Prefer Cesium World Imagery (satellite) when token is present; fallback to Mapbox instead of OSM
     try {
       viewer.imageryLayers.removeAll();
       if (hasToken) {
         try {
           viewer.imageryLayers.addImageryProvider(
-            new Cesium.IonImageryProvider({ assetId: 2 }) // Cesium World Imagery (satellite)
+            new Cesium.IonImageryProvider({ assetId: 2 })
           );
-        } catch (e) {
-          console.warn('Ion imagery failed, falling back to OSM:', e);
-          viewer.imageryLayers.addImageryProvider(
-            new Cesium.UrlTemplateImageryProvider({
-              url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-              credit: '© OpenStreetMap contributors'
-            })
-          );
+        } catch (e1) {
+          console.warn('Ion imagery failed, trying Mapbox:', e1);
+          try {
+            viewer.imageryLayers.addImageryProvider(
+              new Cesium.MapboxImageryProvider({
+                mapId: 'mapbox.satellite', // change to 'mapbox.streets' for streets view
+                accessToken: 'YOUR_MAPBOX_ACCESS_TOKEN'
+              })
+            );
+          } catch (e2) {
+            useOSM('Mapbox failed');
+          }
         }
       } else {
-        viewer.imageryLayers.addImageryProvider(
-          new Cesium.UrlTemplateImageryProvider({
-            url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-            credit: '© OpenStreetMap contributors'
-          })
-        );
+        // No Ion token supplied → use OSM by default
+        useOSM('No Ion token supplied');
       }
     } catch (e) {
-      console.warn('Imagery setup error:', e);
+      console.warn('Imagery setup error. Falling back to OSM:', e);
+      useOSM('Imagery setup error');
     }
 
     // ---- 3D base: world terrain + OSM 3D Buildings (requires Ion token) ----
@@ -292,20 +293,7 @@ def export_cesium_html(df, out_html="uav_3d_globe.html", ion_token="", sample_st
       console.warn("No valid UAV positions parsed from CSV.");
     }
 
-    // Static path line (so you always see a track)
-    const pathEntity = viewer.entities.add({
-      id: 'uav-path',
-      name: 'UAV Path',
-      polyline: {
-        positions: positions,
-        width: 4,
-        material: new Cesium.PolylineGlowMaterialProperty({
-          glowPower: 0.25,
-          color: Cesium.Color.CYAN
-        })
-      }
-    });
-    viewer.zoomTo(pathEntity);
+    // Static path disabled to avoid duplicating the animated trail line.
 
     // Animated point along the path
     const start = Cesium.JulianDate.now();
